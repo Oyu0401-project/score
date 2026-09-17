@@ -341,7 +341,8 @@ body {
     <div id="stepIndicator">
       <span class="step active" data-step="0">女子</span>
       <span class="step" data-step="1">男子</span>
-      <span class="step" data-step="2">総合</span>
+      <span class="step" data-step="2">タイム</span>
+      <span class="step" data-step="3">総合</span>
     </div>
   </header>
 
@@ -354,7 +355,19 @@ body {
   <!-- 男子の部 -->
   <section id="page-mens" class="page">
     <div class="ranks-container" id="ranks-mens"></div>
-    <button id="nextBtn-mens" class="next-btn hidden" onclick="goNext(1)">次へ（総合）</button>
+    <button id="nextBtn-mens" class="next-btn hidden" onclick="goNext(1)">次へ（タイム入力）</button>
+  </section>
+
+  <!-- タイム入力 -->
+  <section id="page-times" class="page">
+    <div class="rank-section">
+      <div class="rank-header">
+        <span class="rank-title">各組のタイム</span>
+        <span class="rank-points">早い方を入力</span>
+      </div>
+      <div id="class-times"></div>
+    </div>
+    <button id="nextBtn-times" class="next-btn hidden" onclick="goNext(2)">次へ（総合）</button>
   </section>
 
   <!-- 総合 -->
@@ -381,9 +394,10 @@ const DIVISION_NAMES = { mens: '男子の部', womens: '女子の部' };
 // 状態管理
 // ============================================
 let state = {
-  step: 0, // 0=女子, 1=男子, 2=総合
+  step: 0, // 0=女子, 1=男子, 2=タイム, 3=総合
+  classTimes: {}, // { classNum: "mm:ss.xx" }
   data: {
-    mens: {},  // { rankNum: { selectedClasses: [], confirmed: false, times: { classNum: "mm:ss.xx" } } }
+    mens: {},
     womens: {}
   }
 };
@@ -404,11 +418,28 @@ function loadState() {
       const parsed = JSON.parse(saved);
       if (parsed && parsed.data) {
         state = parsed;
+        migrateClassTimes();
         return true;
       }
     }
   } catch(e) {}
   return false;
+}
+
+function migrateClassTimes() {
+  if (!state.classTimes) state.classTimes = {};
+  DIVISIONS.forEach(division => {
+    const divisionData = state.data[division] || {};
+    Object.values(divisionData).forEach(rankData => {
+      Object.entries(rankData.times || {}).forEach(([cls, value]) => {
+        if (!value || timeToSeconds(value) === Infinity) return;
+        const current = state.classTimes[cls];
+        if (!current || timeToSeconds(value) < timeToSeconds(current)) {
+          state.classTimes[cls] = value;
+        }
+      });
+    });
+  });
 }
 
 // ============================================
@@ -473,19 +504,11 @@ function renderTimeInput(division, rank, rData) {
   const pts = `<span class="rank-points">${POINTS[rank]}点</span>`;
   const header = `<div class="rank-header">${badge}${title}${pts}</div>`;
 
-  let rows = '';
-  rData.selectedClasses.forEach(cls => {
-    const time = rData.times[cls] || '';
-    rows += `<div class="time-input-row">
-      <span class="cls-label">${cls}組</span>
-      <input type="text" placeholder="例: 1:23.45" value="${time}"
-        oninput="updateTime('${division}',${rank},${cls},this.value)" />
-    </div>`;
-  });
+  const selected = rData.selectedClasses.map(cls => `${cls}組`).join('、');
 
   const editLink = `<span class="edit-link" onclick="editSelection('${division}',${rank})">選択を編集</span>`;
 
-  return header + `<div class="time-input-list">${rows}</div>` + editLink;
+  return header + `<div>${selected}</div>` + editLink;
 }
 
 // ============================================
@@ -543,9 +566,30 @@ function editSelection(division, rank) {
 }
 
 function updateTime(division, rank, cls, value) {
-  state.data[division][rank].times[cls] = value;
+  state.classTimes[cls] = value;
   saveState();
-  updateNextButton(division);
+  updateTimesNextButton();
+}
+
+function renderClassTimes() {
+  const container = document.getElementById('class-times');
+  let html = '<div class="time-input-list">';
+  CLASSES.forEach(cls => {
+    const time = state.classTimes[cls] || '';
+    html += `<div class="time-input-row">
+      <span class="cls-label">${cls}組</span>
+      <input type="text" placeholder="例: 1:23.45" value="${time}"
+        oninput="updateClassTime(${cls},this.value)" />
+    </div>`;
+  });
+  container.innerHTML = html + '</div>';
+  updateTimesNextButton();
+}
+
+function updateClassTime(cls, value) {
+  state.classTimes[cls] = value;
+  saveState();
+  updateTimesNextButton();
 }
 
 // ============================================
@@ -595,9 +639,15 @@ function areAllTimesFilled(division) {
   return complete;
 }
 
+function areAllClassTimesFilled() {
+  return CLASSES.every(cls => {
+    const value = state.classTimes[cls];
+    return value && value.trim() && timeToSeconds(value) !== Infinity;
+  });
+}
+
 function isDivisionComplete(division) {
-  if (!isDivisionSelectionValid(division)) return false;
-  return areAllTimesFilled(division);
+  return isDivisionSelectionValid(division);
 }
 
 function updateNextButton(division) {
@@ -621,6 +671,11 @@ function goNext(currentStep) {
     if (!isDivisionComplete('mens')) return;
     state.step = 2;
     showPage(2);
+    renderClassTimes();
+  } else if (currentStep === 2) {
+    if (!areAllClassTimesFilled()) return;
+    state.step = 3;
+    showPage(3);
     renderOverall();
   }
   saveState();
@@ -629,10 +684,10 @@ function goNext(currentStep) {
 
 function showPage(step) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  const pages = ['page-womens', 'page-mens', 'page-overall'];
+  const pages = ['page-womens', 'page-mens', 'page-times', 'page-overall'];
   document.getElementById(pages[step]).classList.add('active');
 
-  const titles = ['女子の部', '男子の部', '総合'];
+  const titles = ['女子の部', '男子の部', 'タイム入力', '総合'];
   document.getElementById('pageTitle').textContent = titles[step];
 }
 
@@ -643,6 +698,11 @@ function updateStepIndicator() {
     if (i < state.step) s.classList.add('done');
     else if (i === state.step) s.classList.add('active');
   });
+}
+
+function updateTimesNextButton() {
+  const btn = document.getElementById('nextBtn-times');
+  if (btn) btn.classList.toggle('hidden', !areAllClassTimesFilled());
 }
 
 // ============================================
@@ -676,8 +736,7 @@ function secondsToTimeStr(sec) {
 // 総合順位計算ロジック
 // ============================================
 // 各組について男子・女子の得点を合計し、総合得点で順位を決める。
-// 同点の場合は、その組の男子タイムと女子タイムを比較し、
-// 早い方（最速タイム）を採用してタイム順で順位を確定する。
+// 同点の場合は、各組に入力したタイムの早い順で順位を確定する。
 function calculateOverall() {
   initDivision('mens');
   initDivision('womens');
@@ -685,7 +744,7 @@ function calculateOverall() {
   // 各組の獲得得点と最速タイムを集計
   const classStats = {};
   CLASSES.forEach(cls => {
-    classStats[cls] = { totalPoints: 0, bestTime: Infinity, details: [] };
+    classStats[cls] = { totalPoints: 0, bestTime: timeToSeconds(state.classTimes[cls]), details: [] };
   });
 
   DIVISIONS.forEach(div => {
@@ -694,13 +753,9 @@ function calculateOverall() {
       if (!rData.confirmed) return;
       rData.selectedClasses.forEach(cls => {
         classStats[cls].totalPoints += POINTS[rank];
-        const t = timeToSeconds(rData.times[cls]);
-        if (t < classStats[cls].bestTime) {
-          classStats[cls].bestTime = t;
-        }
         classStats[cls].details.push({
           division: div, rank: rank, points: POINTS[rank],
-          time: rData.times[cls] || '未入力'
+          time: state.classTimes[cls] || '未入力'
         });
       });
     });
@@ -741,15 +796,15 @@ function renderOverall() {
 
   let html = '<div class="overall-summary"><h3>総合順位</h3>';
   html += '<table class="overall-table"><thead><tr>';
-  html += '<th>順位</th><th>組</th><th>合計得点</th><th>採用タイム</th><th>男子</th><th>女子</th>';
+  html += '<th>順位</th><th>組</th><th>合計得点</th><th>タイム</th><th>男子</th><th>女子</th>';
   html += '</tr></thead><tbody>';
 
   // 各組の男子・女子の詳細を取得
   results.forEach(entry => {
-    let mensPts = 0, womensPts = 0, mensTime = '—', womensTime = '—';
+    let mensPts = 0, womensPts = 0, mensRank = '—', womensRank = '—';
     entry.details.forEach(d => {
-      if (d.division === 'mens') { mensPts = d.points; mensTime = d.time; }
-      if (d.division === 'womens') { womensPts = d.points; womensTime = d.time; }
+      if (d.division === 'mens') { mensPts = d.points; mensRank = d.rank + '位'; }
+      if (d.division === 'womens') { womensPts = d.points; womensRank = d.rank + '位'; }
     });
 
     html += `<tr>
@@ -757,8 +812,8 @@ function renderOverall() {
       <td><b>${entry.classNum}組</b></td>
       <td class="points-cell">${entry.totalPoints}</td>
       <td>${entry.bestTimeStr}</td>
-      <td>${mensPts > 0 ? mensPts + '点<br><small>' + mensTime + '</small>' : '—'}</td>
-      <td>${womensPts > 0 ? womensPts + '点<br><small>' + womensTime + '</small>' : '—'}</td>
+      <td>${mensPts > 0 ? mensPts + '点<br><small>' + mensRank + '</small>' : '—'}</td>
+      <td>${womensPts > 0 ? womensPts + '点<br><small>' + womensRank + '</small>' : '—'}</td>
     </tr>`;
   });
 
@@ -773,6 +828,7 @@ function resetAll() {
   if (!confirm('すべての入力データをリセットします。よろしいですか？')) return;
   state = {
     step: 0,
+    classTimes: {},
     data: {
       mens: {},
       womens: {}
@@ -789,14 +845,14 @@ function resetAll() {
 // ============================================
 function exportCSV() {
   const results = calculateOverall();
-  let csv = '順位,組,合計得点,採用タイム,男子得点,男子タイム,女子得点,女子タイム\n';
+  let csv = '順位,組,合計得点,タイム,男子得点,男子順位,女子得点,女子順位\n';
   results.forEach(entry => {
-    let mensPts = 0, womensPts = 0, mensTime = '—', womensTime = '—';
+    let mensPts = 0, womensPts = 0, mensRank = '—', womensRank = '—';
     entry.details.forEach(d => {
-      if (d.division === 'mens') { mensPts = d.points; mensTime = d.time; }
-      if (d.division === 'womens') { womensPts = d.points; womensTime = d.time; }
+      if (d.division === 'mens') { mensPts = d.points; mensRank = d.rank + '位'; }
+      if (d.division === 'womens') { womensPts = d.points; womensRank = d.rank + '位'; }
     });
-    csv += `${entry.rank},${entry.classNum}組,${entry.totalPoints},${entry.bestTimeStr},${mensPts},${mensTime},${womensPts},${womensTime}\n`;
+    csv += `${entry.rank},${entry.classNum}組,${entry.totalPoints},${entry.bestTimeStr},${mensPts},${mensRank},${womensPts},${womensRank}\n`;
   });
 
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
@@ -818,7 +874,8 @@ function init() {
     updateStepIndicator();
     if (state.step === 0) renderDivision('womens');
     else if (state.step === 1) { renderDivision('womens'); renderDivision('mens'); }
-    else if (state.step === 2) { renderDivision('mens'); renderDivision('womens'); renderOverall(); }
+    else if (state.step === 2) { renderDivision('mens'); renderDivision('womens'); renderClassTimes(); }
+    else if (state.step === 3) { renderDivision('mens'); renderDivision('womens'); renderClassTimes(); renderOverall(); }
   } else {
     state.step = 0;
     showPage(0);
