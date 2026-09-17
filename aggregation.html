@@ -493,6 +493,16 @@ function renderTimeInput(division, rank, rData) {
 // ============================================
 function toggleClass(division, rank, cls) {
   const rData = state.data[division][rank];
+  const selectedInOtherRanks = RANKS.some(otherRank => {
+    if (otherRank === rank) return false;
+    return state.data[division][otherRank].selectedClasses.includes(cls);
+  });
+
+  if (selectedInOtherRanks) {
+    alert(`${cls}組はすでに他の順位で選ばれています。同じ組を複数順位に使うことはできません。`);
+    return;
+  }
+
   const idx = rData.selectedClasses.indexOf(cls);
   if (idx >= 0) {
     rData.selectedClasses.splice(idx, 1);
@@ -507,6 +517,19 @@ function toggleClass(division, rank, cls) {
 function confirmSelection(division, rank) {
   const rData = state.data[division][rank];
   if (rData.selectedClasses.length === 0) return;
+
+  const usedClasses = new Set();
+  RANKS.forEach(otherRank => {
+    if (otherRank === rank) return;
+    state.data[division][otherRank].selectedClasses.forEach(cls => usedClasses.add(cls));
+  });
+
+  const duplicate = rData.selectedClasses.find(cls => usedClasses.has(cls));
+  if (duplicate) {
+    alert(`${duplicate}組はすでに他の順位で選ばれています。同じ組を複数順位に使うことはできません。`);
+    return;
+  }
+
   rData.confirmed = true;
   saveState();
   renderDivision(division);
@@ -522,17 +545,59 @@ function editSelection(division, rank) {
 function updateTime(division, rank, cls, value) {
   state.data[division][rank].times[cls] = value;
   saveState();
+  updateNextButton(division);
 }
 
 // ============================================
 // ページ遷移
 // ============================================
-function isDivisionComplete(division) {
-  initDivision(division);
-  return RANKS.every(r => {
-    const d = state.data[division][r];
-    return d.confirmed && d.selectedClasses.length > 0;
+function getDivisionUsage(division) {
+  const usage = {};
+  CLASSES.forEach(cls => { usage[cls] = 0; });
+
+  RANKS.forEach(rank => {
+    const d = state.data[division][rank];
+    d.selectedClasses.forEach(cls => {
+      usage[cls] = (usage[cls] || 0) + 1;
+    });
   });
+
+  return usage;
+}
+
+function isDivisionSelectionValid(division) {
+  initDivision(division);
+
+  const usage = getDivisionUsage(division);
+  const allClassesUsedOnce = CLASSES.every(cls => usage[cls] === 1);
+  if (!allClassesUsedOnce) return false;
+
+  const hasAnySelection = RANKS.some(rank => state.data[division][rank].selectedClasses.length > 0);
+  if (!hasAnySelection) return false;
+
+  return RANKS.every(rank => {
+    const d = state.data[division][rank];
+    return d.selectedClasses.length === 0 || d.confirmed;
+  });
+}
+
+function areAllTimesFilled(division) {
+  let complete = true;
+  RANKS.forEach(rank => {
+    const d = state.data[division][rank];
+    d.selectedClasses.forEach(cls => {
+      const value = d.times[cls];
+      if (!value || !value.trim() || timeToSeconds(value) === Infinity) {
+        complete = false;
+      }
+    });
+  });
+  return complete;
+}
+
+function isDivisionComplete(division) {
+  if (!isDivisionSelectionValid(division)) return false;
+  return areAllTimesFilled(division);
 }
 
 function updateNextButton(division) {
