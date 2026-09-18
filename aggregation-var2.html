@@ -704,9 +704,15 @@ function goNext(currentStep) {
     renderDivision('mens');
   } else if (currentStep === 1) {
     if (!isDivisionComplete('mens')) return;
-    state.step = 2;
-    showPage(2);
-    renderClassTimes();
+    if (getClassesRequiringTime().length === 0) {
+      state.step = 3;
+      showPage(3);
+      renderOverall();
+    } else {
+      state.step = 2;
+      showPage(2);
+      renderClassTimes();
+    }
   } else if (currentStep === 2) {
     if (!areAllClassTimesFilled()) return;
     state.step = 3;
