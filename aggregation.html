@@ -105,6 +105,16 @@ body {
 .rank-title { font-size: 15px; font-weight: bold; color: #333; }
 .rank-points { font-size: 11px; color: #888; margin-left: auto; }
 
+.rank-points-input {
+  width: 58px;
+  padding: 3px 4px;
+  border: 1px solid #d0d8e0;
+  border-radius: 4px;
+  color: #555;
+  font-size: 11px;
+  text-align: right;
+}
+
 /* 選択前：組リスト */
 .group-list {
   display: flex;
@@ -449,7 +459,9 @@ function initDivision(division) {
   if (!state.data[division]) state.data[division] = {};
   RANKS.forEach(r => {
     if (!state.data[division][r]) {
-      state.data[division][r] = { selectedClasses: [], confirmed: false, times: {} };
+      state.data[division][r] = { selectedClasses: [], confirmed: false, times: {}, points: POINTS[r] };
+    } else if (state.data[division][r].points === undefined) {
+      state.data[division][r].points = POINTS[r];
     }
   });
 }
@@ -481,7 +493,7 @@ function renderDivision(division) {
 function renderGroupSelection(division, rank, rData) {
   const badge = `<div class="rank-badge" data-rank="${rank}">${rank}</div>`;
   const title = `<span class="rank-title">${rank}位</span>`;
-  const pts = `<span class="rank-points">${POINTS[rank]}点</span>`;
+  const pts = renderPointsInput(division, rank, rData);
   const header = `<div class="rank-header">${badge}${title}${pts}</div>`;
 
   let items = '';
@@ -501,7 +513,7 @@ function renderGroupSelection(division, rank, rData) {
 function renderTimeInput(division, rank, rData) {
   const badge = `<div class="rank-badge" data-rank="${rank}">${rank}</div>`;
   const title = `<span class="rank-title">${rank}位</span>`;
-  const pts = `<span class="rank-points">${POINTS[rank]}点</span>`;
+  const pts = renderPointsInput(division, rank, rData);
   const header = `<div class="rank-header">${badge}${title}${pts}</div>`;
 
   const selected = rData.selectedClasses.map(cls => `${cls}組`).join('、');
@@ -509,6 +521,12 @@ function renderTimeInput(division, rank, rData) {
   const editLink = `<span class="edit-link" onclick="editSelection('${division}',${rank})">選択を編集</span>`;
 
   return header + `<div>${selected}</div>` + editLink;
+}
+
+function renderPointsInput(division, rank, rData) {
+  return `<span class="rank-points"><input class="rank-points-input" type="number" min="0" step="any"
+    value="${rData.points}" aria-label="${rank}位の得点"
+    oninput="updateRankPoints('${division}',${rank},this.value)" /> 点</span>`;
 }
 
 // ============================================
@@ -563,6 +581,17 @@ function editSelection(division, rank) {
   rData.confirmed = false;
   saveState();
   renderDivision(division);
+}
+
+function updateRankPoints(division, rank, value) {
+  state.data[division][rank].points = value;
+  saveState();
+  updateNextButton(division);
+}
+
+function getRankPoints(division, rank) {
+  const value = Number(state.data[division][rank].points);
+  return Number.isFinite(value) && value >= 0 ? value : NaN;
 }
 
 function updateTime(division, rank, cls, value) {
@@ -647,7 +676,8 @@ function areAllClassTimesFilled() {
 }
 
 function isDivisionComplete(division) {
-  return isDivisionSelectionValid(division);
+  if (!isDivisionSelectionValid(division)) return false;
+  return RANKS.every(rank => getRankPoints(division, rank) >= 0);
 }
 
 function updateNextButton(division) {
@@ -752,9 +782,10 @@ function calculateOverall() {
       const rData = state.data[div][rank];
       if (!rData.confirmed) return;
       rData.selectedClasses.forEach(cls => {
-        classStats[cls].totalPoints += POINTS[rank];
+        const points = getRankPoints(div, rank);
+        classStats[cls].totalPoints += points;
         classStats[cls].details.push({
-          division: div, rank: rank, points: POINTS[rank],
+          division: div, rank: rank, points: points,
           time: state.classTimes[cls] || '未入力'
         });
       });
