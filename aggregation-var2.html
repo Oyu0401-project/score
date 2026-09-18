@@ -104,6 +104,16 @@ body {
 
 .rank-title { font-size: 15px; font-weight: bold; color: #333; }
 .rank-points { font-size: 11px; color: #888; margin-left: auto; }
+.rank-points-input {
+  width: 58px;
+  padding: 3px 4px;
+  border: 1px solid #d0d8e0;
+  border-radius: 4px;
+  color: #555;
+  font-size: 11px;
+  text-align: right;
+}
+.rank-points-input:focus { border-color: #1e6091; outline: none; }
 
 /* 選択前：組リスト */
 .group-list {
@@ -449,9 +459,21 @@ function initDivision(division) {
   if (!state.data[division]) state.data[division] = {};
   RANKS.forEach(r => {
     if (!state.data[division][r]) {
-      state.data[division][r] = { selectedClasses: [], confirmed: false, times: {} };
+      state.data[division][r] = { selectedClasses: [], confirmed: false, times: {}, points: POINTS[r] };
+    } else if (state.data[division][r].points === undefined) {
+      state.data[division][r].points = POINTS[r];
     }
   });
+}
+
+function getRankPoints(division, rank) {
+  const value = Number(state.data[division][rank].points);
+  return Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
+function updateRankPoints(division, rank, value) {
+  state.data[division][rank].points = value;
+  saveState();
 }
 
 function renderDivision(division) {
@@ -481,7 +503,7 @@ function renderDivision(division) {
 function renderGroupSelection(division, rank, rData) {
   const badge = `<div class="rank-badge" data-rank="${rank}">${rank}</div>`;
   const title = `<span class="rank-title">${rank}位</span>`;
-  const pts = `<span class="rank-points">${POINTS[rank]}点</span>`;
+  const pts = `<span class="rank-points"><input class="rank-points-input" type="number" min="0" step="1" value="${getRankPoints(division, rank)}" oninput="updateRankPoints('${division}',${rank},this.value)"> 点</span>`;
   const header = `<div class="rank-header">${badge}${title}${pts}</div>`;
 
   let items = '';
@@ -501,7 +523,7 @@ function renderGroupSelection(division, rank, rData) {
 function renderTimeInput(division, rank, rData) {
   const badge = `<div class="rank-badge" data-rank="${rank}">${rank}</div>`;
   const title = `<span class="rank-title">${rank}位</span>`;
-  const pts = `<span class="rank-points">${POINTS[rank]}点</span>`;
+  const pts = `<span class="rank-points"><input class="rank-points-input" type="number" min="0" step="1" value="${getRankPoints(division, rank)}" oninput="updateRankPoints('${division}',${rank},this.value)"> 点</span>`;
   const header = `<div class="rank-header">${badge}${title}${pts}</div>`;
 
   const selected = rData.selectedClasses.map(cls => `${cls}組`).join('、');
@@ -580,7 +602,7 @@ function calculateClassPoints() {
       const rData = state.data[division][rank];
       if (!rData.confirmed) return;
       rData.selectedClasses.forEach(cls => {
-        points[cls] += POINTS[rank];
+        points[cls] += getRankPoints(division, rank);
       });
     });
   });
@@ -793,9 +815,10 @@ function calculateOverall() {
       const rData = state.data[div][rank];
       if (!rData.confirmed) return;
       rData.selectedClasses.forEach(cls => {
-        classStats[cls].totalPoints += POINTS[rank];
+        const rankPoints = getRankPoints(div, rank);
+        classStats[cls].totalPoints += rankPoints;
         classStats[cls].details.push({
-          division: div, rank: rank, points: POINTS[rank],
+          division: div, rank: rank, points: rankPoints,
           time: state.classTimes[cls] || '未入力'
         });
       });
