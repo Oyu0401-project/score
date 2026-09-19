@@ -44,13 +44,18 @@ body {
 }
 
 .step {
+  border: none;
+  font-family: inherit;
   font-size: 12px;
   padding: 4px 14px;
   border-radius: 14px;
   background: rgba(255,255,255,0.15);
   color: rgba(255,255,255,0.5);
+  cursor: pointer;
   transition: all 0.3s;
 }
+
+.step:hover { background: rgba(255,255,255,0.3); color: #fff; }
 
 .step.active {
   background: #fff;
@@ -349,10 +354,10 @@ body {
   <header id="header">
     <h1 id="pageTitle">女子の部</h1>
     <div id="stepIndicator">
-      <span class="step active" data-step="0">女子</span>
-      <span class="step" data-step="1">男子</span>
-      <span class="step" data-step="2">タイム</span>
-      <span class="step" data-step="3">総合</span>
+      <button type="button" class="step active" data-step="0" onclick="navigateToStep(0)">女子</button>
+      <button type="button" class="step" data-step="1" onclick="navigateToStep(1)">男子</button>
+      <button type="button" class="step" data-step="2" onclick="navigateToStep(2)">タイム</button>
+      <button type="button" class="step" data-step="3" onclick="navigateToStep(3)">総合</button>
     </div>
   </header>
 
@@ -719,6 +724,30 @@ function showPage(step) {
 
   const titles = ['女子の部', '男子の部', 'タイム入力', '総合'];
   document.getElementById('pageTitle').textContent = titles[step];
+}
+
+function navigateToStep(step) {
+  state.step = step;
+  showPage(step);
+
+  if (step === 0) {
+    renderDivision('womens');
+  } else if (step === 1) {
+    renderDivision('womens');
+    renderDivision('mens');
+  } else if (step === 2) {
+    renderDivision('womens');
+    renderDivision('mens');
+    renderClassTimes();
+  } else if (step === 3) {
+    renderDivision('womens');
+    renderDivision('mens');
+    renderClassTimes();
+    renderOverall();
+  }
+
+  saveState();
+  updateStepIndicator();
 }
 
 function updateStepIndicator() {
